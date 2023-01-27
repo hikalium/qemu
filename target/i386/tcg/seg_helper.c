@@ -1098,19 +1098,22 @@ void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
             } else {
                 qemu_log(" env->regs[R_EAX]=" TARGET_FMT_lx, env->regs[R_EAX]);
             }
+            qemu_log("\n");
             qemu_log(
-                "hikalium_exception:"
-                "{\"count\":%d,"
-                "\"intno\":0x%02X,"
-                "\"error_code\":0x%04X,"
+                "hikalium_exception:{"
+                "\"count\":%d,"
+                "\"intno\":%d,"
+                "\"error_code\":%d,"
                 "\"is_int\":%d,"
                 "\"cpl\":%d,"
                 "\"cs_sel\":%d,"
-                "\"rip\":0x%016llX,"
+                "\"rip\":%llu,"
                 "\"ss_sel\":%d,"
-                "\"rsp\":0x%016llX,\n"
-                "\"cr2\":0x%016llX,\n"
-                "\"rbp\":0x%016llX,\n",
+                "\"rsp\":%llu,"
+                "\"cr2\":%llu,"
+                "\"rbp\":%llu,"
+                "\"type\": \"exception_info\""
+                "}\n",
                 count,
                 intno,
                 error_code,
@@ -1123,7 +1126,6 @@ void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
                 env->cr[2],
                 env->regs[R_EBP]
             );
-            qemu_log("\n");
             log_cpu_state(CPU(cpu), CPU_DUMP_CCOP);
 #if 0
             {
