@@ -1099,7 +1099,7 @@ void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
                 qemu_log(" env->regs[R_EAX]=" TARGET_FMT_lx, env->regs[R_EAX]);
             }
             qemu_log(
-                "hikalium:"
+                "hikalium_exception:"
                 "{\"count\":%d,"
                 "\"intno\":0x%02X,"
                 "\"error_code\":0x%04X,"
