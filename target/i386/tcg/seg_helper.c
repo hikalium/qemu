@@ -1093,6 +1093,26 @@ void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
                      env->segs[R_CS].selector, env->eip,
                      (int)env->segs[R_CS].base + env->eip,
                      env->segs[R_SS].selector, env->regs[R_ESP]);
+            qemu_log(
+                "hikalium:"
+                "{\"count\":%d,"
+                "\"intno\":0x%02X,"
+                "\"error_code\":0x%04X,"
+                "\"is_int\":%d,"
+                "\"cpl\":%d,"
+                "\"cs_sel\":%d,"
+                "\"rip\":0x%016llX,"
+                "\"ss_sel\":%d,"
+                "\"rsp\":0x%016llX,",
+                count,
+                intno,
+                error_code,
+                is_int,
+                env->hflags & HF_CPL_MASK,
+                env->segs[R_CS].selector, env->eip,
+                env->segs[R_SS].selector, env->regs[R_ESP]
+            );
+
             if (intno == 0x0e) {
                 qemu_log(" CR2=" TARGET_FMT_lx, env->cr[2]);
             } else {
