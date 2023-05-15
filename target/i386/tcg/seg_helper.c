@@ -853,7 +853,7 @@ static inline target_ulong get_rsp_from_tss(CPUX86State *env, int level)
     pg_mode = get_pg_mode(env);
     sext = (int64_t)rsp >> (pg_mode & PG_MODE_LA57 ? 56 : 47);
     if (sext != 0 && sext != -1) {
-      qemu_log("get_rsp_from_tss: invalid rsp: %llX, tr.base = %llX\n", rsp, env->tr.base);
+      qemu_log("get_rsp_from_tss: invalid rsp: %lX, tr.base = %lX\n", rsp, env->tr.base);
         raise_exception_err(env, EXCP0C_STACK, 0);
     }
 
@@ -1107,11 +1107,11 @@ void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
                 "\"is_int\":%d,"
                 "\"cpl\":%d,"
                 "\"cs_sel\":%d,"
-                "\"rip\":%llu,"
+                "\"rip\":%lu,"
                 "\"ss_sel\":%d,"
-                "\"rsp\":%llu,"
-                "\"cr2\":%llu,"
-                "\"rbp\":%llu,"
+                "\"rsp\":%lu,"
+                "\"cr2\":%lu,"
+                "\"rbp\":%lu,"
                 "\"type\": \"exception_info\""
                 "}\n",
                 count,

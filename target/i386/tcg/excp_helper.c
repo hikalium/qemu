@@ -96,13 +96,13 @@ void raise_interrupt2(CPUX86State *env, int intno,
     CPUState *cs = env_cpu(env);
 
     // hikalium
-    qemu_log("hikalium: raise_interrupt2: is_int == %d intno = %d eip=0x%018llX error_code = 0x%018X\n", is_int, intno, env->eip, error_code);
+    qemu_log("hikalium: raise_interrupt2: is_int == %d intno = %d eip=0x%018lX error_code = 0x%018X\n", is_int, intno, env->eip, error_code);
     if (env->eip == 0x200FD0) {
       uint64_t rsp = env->regs[R_ESP];
-      qemu_log("hikalium: rsp: 0x%018llX\n", rsp);
+      qemu_log("hikalium: rsp: 0x%018lX\n", rsp);
       uint64_t ret_to = 0;
       cpu_physical_memory_read(rsp, &ret_to, 8);
-      qemu_log("hikalium: ret_to: 0x%018llX\n", ret_to);
+      qemu_log("hikalium: ret_to: 0x%018lX\n", ret_to);
     }
     if (!is_int) {
         cpu_svm_check_intercept_param(env, SVM_EXIT_EXCP_BASE + intno,
