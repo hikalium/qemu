@@ -882,23 +882,26 @@ static gboolean gd_draw_event(GtkWidget *widget, cairo_t *cr, void *opaque)
 static gboolean gd_motion_event(GtkWidget *widget, GdkEventMotion *motion,
                                 void *opaque)
 {
+    // motion is reported in its window's coordinates
     VirtualConsole *vc = opaque;
     GtkDisplayState *s = vc->s;
     int x, y;
     int mx, my;
     int fbh, fbw;
-    int ww, wh, ws;
+    int ww, wh;
+    int ws = 0;
 
     if (!vc->gfx.ds) {
         return TRUE;
     }
+    // vc->gfx: VirtualGfxConsole: @ include/ui/gtk.h
+    // vc->gfx.ds: DisplaySurface @ include/ui/surface.h
 
     fbw = surface_width(vc->gfx.ds) * vc->gfx.scale_x;
     fbh = surface_height(vc->gfx.ds) * vc->gfx.scale_y;
 
     ww = gtk_widget_get_allocated_width(widget);
     wh = gtk_widget_get_allocated_height(widget);
-    ws = gtk_widget_get_scale_factor(widget);
 
     mx = my = 0;
     if (ww > fbw) {
@@ -908,8 +911,11 @@ static gboolean gd_motion_event(GtkWidget *widget, GdkEventMotion *motion,
         my = (wh - fbh) / 2;
     }
 
-    x = (motion->x - mx) / vc->gfx.scale_x * ws;
-    y = (motion->y - my) / vc->gfx.scale_y * ws;
+    x = (motion->x - mx) / vc->gfx.scale_x;
+    y = (motion->y - my) / vc->gfx.scale_y;
+
+    fprintf(stderr, "hikalium: gd_motion_event: ww = %d, wh = %d, ws = %d, x = %d, y = %d\n",
+            ww, wh, ws, x, y);
 
     if (qemu_input_is_absolute(vc->gfx.dcl.con)) {
         if (x < 0 || y < 0 ||
