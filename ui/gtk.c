@@ -889,7 +889,6 @@ static gboolean gd_motion_event(GtkWidget *widget, GdkEventMotion *motion,
     int mx, my;
     int fbh, fbw;
     int ww, wh;
-    int ws = 0;
 
     if (!vc->gfx.ds) {
         return TRUE;
@@ -913,9 +912,6 @@ static gboolean gd_motion_event(GtkWidget *widget, GdkEventMotion *motion,
 
     x = (motion->x - mx) / vc->gfx.scale_x;
     y = (motion->y - my) / vc->gfx.scale_y;
-
-    fprintf(stderr, "hikalium: gd_motion_event: ww = %d, wh = %d, ws = %d, x = %d, y = %d\n",
-            ww, wh, ws, x, y);
 
     if (qemu_input_is_absolute(vc->gfx.dcl.con)) {
         if (x < 0 || y < 0 ||
