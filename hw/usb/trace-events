@@ -377,3 +377,13 @@ canokey_handle_data_out(uint8_t ep_out, uint32_t out_len) "ep %d len %d"
 canokey_handle_data_in(uint8_t ep_in, uint32_t in_len) "ep %d len %d"
 canokey_realize(void)
 canokey_unrealize(void)
+
+# dev-ncm.c
+usb_ncm_realize(int speed) "speed %d"
+usb_ncm_control(int request, int value, int index, int length) "request 0x%04x value 0x%04x index 0x%04x length 0x%04x"
+usb_ncm_set_config(int value) "config %d"
+usb_ncm_tx_frame(uint32_t len, uint16_t seq) "frame_len %u seq %u"
+usb_ncm_rx_frame(uint32_t len) "frame_len %u"
+usb_ncm_rx_bad_ntb(uint32_t buf_len) "buf_len %u (bad signature/length)"
+usb_ncm_notif_queue(uint8_t code, uint16_t value) "code 0x%02x value 0x%04x"
+usb_ncm_notif_pop(uint8_t code) "code 0x%02x"
