@@ -37,10 +37,12 @@
 #include "migration/vmstate.h"
 #include "desc.h"
 #include "net/net.h"
+#include "system/system.h"
 #include "qemu/queue.h"
 #include "qemu/module.h"
 #include "qom/object.h"
 #include "trace.h"
+#include "ncm-ntb.h"
 
 #define NCM_VENDOR_NUM          0x0525  /* NetChip (Linux gadget range) */
 #define NCM_PRODUCT_NUM         0xa4a3  /* a4a1=CDC, a4a2=RNDIS, a4a3=NCM */
@@ -396,99 +398,29 @@ static const USBDesc desc_ncm = {
 };
 
 /* -----------------------------------------------------------------------
- *  NTB16 encode / decode
+ *  NTB16 encode / decode (pure helpers live in ncm-ntb.c so a unit test
+ *  in tests/unit/ can link them directly).
  * ----------------------------------------------------------------------- */
 
-/* [NCM10] 3.2.1 NTH16, 3.3.1 NDP16 (NCM0: no-CRC variant).
- *
- * Layout for a single datagram:
- *   off  0..12  : NTH16  (signature "NCMH", wHeaderLength = 12)
- *   off 12..28  : NDP16  (signature "NCM0", one (idx,len) + (0,0) term)
- *   off 28..28+N: datagram bytes
- *
- * Block length is 12 + 16 + N = 28 + N, already 4-aligned for any N. */
-#define NCM_NTH16_LEN  12
-#define NCM_NDP16_LEN  16
-#define NCM_DGRAM_OFF  (NCM_NTH16_LEN + NCM_NDP16_LEN)
-
-/* Build an NTB16 in `dst` (caller-provided, at least NCM_DGRAM_OFF + len
- * bytes). Returns total NTB length. */
-static uint32_t ncm_build_ntb16(uint8_t *dst, const uint8_t *frame,
-                                uint32_t frame_len, uint16_t seq)
+/* Callback invoked by ncm_walk_ntb16() for each datagram parsed out of
+ * a bulk-OUT NTB. Hands each frame off to the netdev. */
+static void ncm_emit_to_netdev(void *opaque, const uint8_t *frame,
+                               uint32_t len)
 {
-    uint32_t block_len = NCM_DGRAM_OFF + frame_len;
+    USBNCMState *s = opaque;
 
-    /* NTH16 */
-    dst[0] = 'N'; dst[1] = 'C'; dst[2] = 'M'; dst[3] = 'H';
-    dst[4] = NCM_NTH16_LEN & 0xff;
-    dst[5] = NCM_NTH16_LEN >> 8;
-    dst[6] = seq & 0xff;
-    dst[7] = seq >> 8;
-    dst[8] = block_len & 0xff;
-    dst[9] = block_len >> 8;
-    dst[10] = NCM_NTH16_LEN & 0xff;
-    dst[11] = NCM_NTH16_LEN >> 8;
-
-    /* NDP16 (no-CRC: "NCM0") */
-    dst[12] = 'N'; dst[13] = 'C'; dst[14] = 'M'; dst[15] = '0';
-    dst[16] = NCM_NDP16_LEN & 0xff;
-    dst[17] = NCM_NDP16_LEN >> 8;
-    dst[18] = 0; dst[19] = 0;                       /* wNextNdpIndex */
-    dst[20] = NCM_DGRAM_OFF & 0xff;
-    dst[21] = NCM_DGRAM_OFF >> 8;
-    dst[22] = frame_len & 0xff;
-    dst[23] = frame_len >> 8;
-    dst[24] = 0; dst[25] = 0;                       /* terminator idx */
-    dst[26] = 0; dst[27] = 0;                       /* terminator len */
-
-    memcpy(dst + NCM_DGRAM_OFF, frame, frame_len);
-    return block_len;
+    trace_usb_ncm_rx_frame(len);
+    qemu_send_packet(qemu_get_queue(s->nic), frame, len);
 }
 
-/* Walk one NTB16, send each datagram to the netdev. Tolerates malformed
- * NTBs by silently discarding. */
 static void ncm_parse_and_send_ntb16(USBNCMState *s,
                                      const uint8_t *ntb, uint32_t len)
 {
-    uint16_t hdr_len, block_len, ndp_index;
-    uint32_t i;
-
-    if (len < NCM_NTH16_LEN) {
-        return;
-    }
-    if (ntb[0] != 'N' || ntb[1] != 'C' || ntb[2] != 'M' || ntb[3] != 'H') {
+    if (ncm_walk_ntb16(ntb, len, ncm_emit_to_netdev, s) == 0 &&
+        (len < NCM_NTH16_LEN ||
+         ntb[0] != 'N' || ntb[1] != 'C' ||
+         ntb[2] != 'M' || ntb[3] != 'H')) {
         trace_usb_ncm_rx_bad_ntb(len);
-        return;
-    }
-    hdr_len   = ntb[4] | ((uint16_t)ntb[5] << 8);
-    block_len = ntb[8] | ((uint16_t)ntb[9] << 8);
-    ndp_index = ntb[10] | ((uint16_t)ntb[11] << 8);
-    if (hdr_len != NCM_NTH16_LEN) {
-        return;
-    }
-    if (block_len > len) {
-        return;
-    }
-    if (ndp_index + 8 > block_len) {
-        return;
-    }
-    if (ntb[ndp_index] != 'N' || ntb[ndp_index + 1] != 'C' ||
-        ntb[ndp_index + 2] != 'M' || ntb[ndp_index + 3] != '0') {
-        /* Only no-CRC variant is supported. */
-        return;
-    }
-    /* Skip wLength (2) + wNextNdpIndex (2) and walk (idx,len) pairs. */
-    for (i = ndp_index + 8; i + 4 <= block_len; i += 4) {
-        uint16_t didx = ntb[i] | ((uint16_t)ntb[i + 1] << 8);
-        uint16_t dlen = ntb[i + 2] | ((uint16_t)ntb[i + 3] << 8);
-        if (didx == 0 && dlen == 0) {
-            break;
-        }
-        if ((uint32_t)didx + dlen > block_len) {
-            break;
-        }
-        trace_usb_ncm_rx_frame(dlen);
-        qemu_send_packet(qemu_get_queue(s->nic), ntb + didx, dlen);
     }
 }
 
@@ -551,48 +483,6 @@ static void ncm_clear_notifs(USBNCMState *s)
 }
 
 /* -----------------------------------------------------------------------
- *  GET_NTB_PARAMETERS response  [NCM10 Table 6-3]
- * ----------------------------------------------------------------------- */
-
-/* 28-byte structure, NTB16-only (NTB32 advertised as unsupported by
- * leaving its supported-formats bit clear and setting its sizes to 0). */
-static void ncm_fill_ntb_parameters(uint8_t *out)
-{
-    /* wLength = 28 */
-    out[0]  = 28;
-    out[1]  = 0;
-    /* bmNtbFormatsSupported = 0x0001 (NTB16 only) */
-    out[2]  = 0x01;
-    out[3]  = 0x00;
-    /* dwNtbInMaxSize = NCM_NTB_MAX_LEN */
-    out[4]  = NCM_NTB_MAX_LEN        & 0xff;
-    out[5]  = (NCM_NTB_MAX_LEN >> 8) & 0xff;
-    out[6]  = 0;
-    out[7]  = 0;
-    /* wNdpInDivisor = 4 */
-    out[8]  = 4;  out[9]  = 0;
-    /* wNdpInPayloadRemainder = 0 */
-    out[10] = 0;  out[11] = 0;
-    /* wNdpInAlignment = 4 */
-    out[12] = 4;  out[13] = 0;
-    /* wReserved */
-    out[14] = 0;  out[15] = 0;
-    /* dwNtbOutMaxSize */
-    out[16] = NCM_NTB_MAX_LEN        & 0xff;
-    out[17] = (NCM_NTB_MAX_LEN >> 8) & 0xff;
-    out[18] = 0;
-    out[19] = 0;
-    /* wNdpOutDivisor = 4 */
-    out[20] = 4;  out[21] = 0;
-    /* wNdpOutPayloadRemainder = 0 */
-    out[22] = 0;  out[23] = 0;
-    /* wNdpOutAlignment = 4 */
-    out[24] = 4;  out[25] = 0;
-    /* wNtbOutMaxDatagrams = 0 (no limit) */
-    out[26] = 0;  out[27] = 0;
-}
-
-/* -----------------------------------------------------------------------
  *  USB control and data callbacks
  * ----------------------------------------------------------------------- */
 
@@ -633,12 +523,12 @@ static void usb_ncm_handle_control(USBDevice *dev, USBPacket *p,
 
     switch (request) {
     case ClassInterfaceRequest | USB_CDC_NCM_GET_NTB_PARAMETERS:
-        if (length < 28) {
+        if (length < NCM_NTB_PARAMS_LEN) {
             p->status = USB_RET_STALL;
             return;
         }
-        ncm_fill_ntb_parameters(data);
-        p->actual_length = 28;
+        ncm_fill_ntb_parameters(data, NCM_NTB_MAX_LEN, NCM_NTB_MAX_LEN);
+        p->actual_length = NCM_NTB_PARAMS_LEN;
         return;
 
     case ClassInterfaceRequest | USB_CDC_NCM_GET_NTB_INPUT_SIZE:
