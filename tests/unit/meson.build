@@ -6,6 +6,7 @@ tests = {
   'check-qdict': [],
   'check-qnum': [],
   'check-qstring': [],
+  'test-ncm-ntb': [files('../../hw/usb/ncm-ntb.c')],
   'check-qlist': [],
   'check-qnull': [],
   'check-qobject': [],
