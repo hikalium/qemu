@@ -20,3 +20,7 @@ GTAGS
 *.swp
 *.patch
 *.gcov
+
+build-dist/
+dist/
+staging/
