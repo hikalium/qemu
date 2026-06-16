@@ -4,12 +4,16 @@
 # Everything except the host glibc/loader is bundled; GTK runtime modules
 # (gdk-pixbuf loaders, gio modules, GSettings schemas) are bundled too and
 # wired up by a thin wrapper that sets the relevant env vars relative to itself.
-# Firmware blobs are dropped (wasabi supplies its own OVMF).
+# The large edk2/OVMF system firmware is dropped (wasabi supplies its own
+# OVMF via -bios); the small device option ROMs / VGA BIOS / kvmvapic that
+# QEMU loads at runtime for emulated devices are kept.
 
-SRC=/work2/taisho/qemu/staging/usr/local
-OUT=/work2/taisho/qemu/dist/wasabi-qemu-x86_64-linux
-PATCHELF=/work2/taisho/qemu/build-dist/pyvenv/bin/patchelf
-ARCH=x86_64-linux-gnu
+# All paths are overridable via the environment so the script is reusable on
+# any build host (defaults match the original build machine).
+SRC="${SRC:-/work2/taisho/qemu/staging/usr/local}"
+OUT="${OUT:-/work2/taisho/qemu/dist/wasabi-qemu-x86_64-linux}"
+PATCHELF="${PATCHELF:-/work2/taisho/qemu/build-dist/pyvenv/bin/patchelf}"
+ARCH="${ARCH:-x86_64-linux-gnu}"
 BINS=(qemu-system-x86_64 qemu-img)
 
 # host-provided libraries to keep external (glibc / dynamic loader family)
@@ -21,12 +25,12 @@ mkdir -p "$OUT/bin" "$OUT/lib"
 # 1) executables (the real ELF files; wrapper added later)
 for b in "${BINS[@]}"; do cp -a "$SRC/bin/$b" "$OUT/bin/$b.real"; done
 
-# 2) data dir, minus firmware blobs
+# 2) data dir, minus the large edk2/OVMF system firmware (wasabi supplies its
+#    own OVMF via -bios). Device option ROMs / VGA BIOS / kvmvapic.bin are kept
+#    because QEMU loads them at runtime for the emulated devices.
 mkdir -p "$OUT/share/qemu"
 ( cd "$SRC/share/qemu" && find . -type f \
-    ! -name '*.fd' ! -name '*.bin' ! -name '*.rom' ! -name '*.img' \
-    ! -name '*.dtb' ! -name '*.elf' ! -name 'edk2-*' ! -name 'vgabios*' \
-    ! -name 'seabios*' ! -name 'pvh.bin' -print0 \
+    ! -name 'edk2-*' ! -name '*.fd' -print0 \
   | tar --null -T - -cf - ) | ( cd "$OUT/share/qemu" && tar xf - )
 
 # 3) GTK / GLib runtime modules
